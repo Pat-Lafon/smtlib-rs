@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use ast::{QualIdentifier, Term};
 use backend::Backend;
 use itertools::Itertools;
-use parse::ParseError;
+pub use parse::ParseError;
 
 use crate::ast::{Command, GeneralResponse};
 pub use crate::storage::Storage;

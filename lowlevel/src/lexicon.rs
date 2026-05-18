@@ -234,11 +234,20 @@ impl<'st> SmtlibParse<'st> for &'st str {
 }
 impl<'st> SmtlibParse<'st> for bool {
     type Output = Self;
-    fn is_start_of(_offset: usize, _tokens: &mut Parser<'st, '_>) -> bool {
-        todo!()
+    fn is_start_of(offset: usize, tokens: &mut Parser<'st, '_>) -> bool {
+        tokens.nth_matches(offset, Token::Symbol, "true")
+            || tokens.nth_matches(offset, Token::Symbol, "false")
     }
 
-    fn parse(_tokens: &mut Parser<'st, '_>) -> Result<Self, ParseError> {
-        todo!()
+    fn parse(tokens: &mut Parser<'st, '_>) -> Result<Self, ParseError> {
+        if tokens.nth_matches(0, Token::Symbol, "true") {
+            tokens.expect_st(Token::Symbol)?;
+            Ok(true)
+        } else if tokens.nth_matches(0, Token::Symbol, "false") {
+            tokens.expect_st(Token::Symbol)?;
+            Ok(false)
+        } else {
+            Err(tokens.stuck("bool"))
+        }
     }
 }

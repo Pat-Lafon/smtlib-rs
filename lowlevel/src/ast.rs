@@ -51,8 +51,8 @@ impl<'st> SmtlibParse<'st> for Attribute<'st> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum AttributeValue<'st> {
-    /// `(<s_expr>)`
-    Expr(SExpr<'st>),
+    /// `(<s_expr>*)`
+    Expr(&'st [SExpr<'st>]),
     /// `<spec_constant>`
     SpecConstant(SpecConstant<'st>),
     /// `<symbol>`
@@ -61,7 +61,7 @@ pub enum AttributeValue<'st> {
 impl std::fmt::Display for AttributeValue<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Self::Expr(m0) => write!(f, "({})", m0),
+            Self::Expr(m0) => write!(f, "({})", m0.iter().format(" ")),
             Self::SpecConstant(m0) => write!(f, "{}", m0),
             Self::Symbol(m0) => write!(f, "{}", m0),
         }
@@ -85,7 +85,7 @@ impl<'st> SmtlibParse<'st> for AttributeValue<'st> {
         let offset = 0;
         if p.nth(offset) == Token::LParen {
             p.expect(Token::LParen)?;
-            let m0 = <SExpr<'st> as SmtlibParse<'st>>::parse(p)?;
+            let m0 = p.any::<SExpr<'st>>()?;
             p.expect(Token::RParen)?;
             #[allow(clippy::useless_conversion)] return Ok(Self::Expr(m0.into()));
         }

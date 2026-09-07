@@ -37,7 +37,7 @@ syntax = "<spec_constant>"
 syntax = "<symbol>"
 
 [attribute_value.expr]
-syntax = "( <s_expr> )"
+syntax = "( <s_expr>* )"
 
 [attribute]
 keyword = { syntax = "<keyword>" }

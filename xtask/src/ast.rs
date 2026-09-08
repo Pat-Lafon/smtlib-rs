@@ -93,12 +93,16 @@ impl Name {
         match spec.general.get(self) {
             Some(Syntax::Rule(rule)) => rule.syntax.fields.iter().any(|f| match f {
                 Field::One(name) => name == self,
-                Field::Any(_) | Field::NonZero(_) | Field::NPlusOne(_) => false,
+                Field::Optional(_) | Field::Any(_) | Field::NonZero(_) | Field::NPlusOne(_) => {
+                    false
+                }
             }),
             Some(Syntax::Class { response: _, cases }) => cases.iter().any(|(_, case)| {
                 case.syntax.fields.iter().any(|f| match f {
                     Field::One(name) => name == self,
-                    Field::Any(_) | Field::NonZero(_) | Field::NPlusOne(_) => false,
+                    Field::Optional(_) | Field::Any(_) | Field::NonZero(_) | Field::NPlusOne(_) => {
+                    false
+                }
                 })
             }),
             None => false,
@@ -112,12 +116,16 @@ impl Name {
             _ => match spec.general.get(self) {
                 Some(Syntax::Rule(rule)) => rule.syntax.fields.iter().any(|f| match f {
                     Field::One(name) => name.needs_lt(spec),
-                    Field::Any(_) | Field::NonZero(_) | Field::NPlusOne(_) => true,
+                    Field::Optional(_) | Field::Any(_) | Field::NonZero(_) | Field::NPlusOne(_) => {
+                        true
+                    }
                 }),
                 Some(Syntax::Class { response: _, cases }) => cases.iter().any(|(_, case)| {
                     case.syntax.fields.iter().any(|f| match f {
                         Field::One(name) => name == self || name.needs_lt(spec),
-                        Field::Any(_) | Field::NonZero(_) | Field::NPlusOne(_) => true,
+                        Field::Optional(_) | Field::Any(_) | Field::NonZero(_) | Field::NPlusOne(_) => {
+                        true
+                    }
                     })
                 }),
                 None => {
@@ -222,6 +230,7 @@ impl Token {
 #[derive(Debug, Clone)]
 enum Field {
     One(Name),
+    Optional(Name),
     Any(Name),
     NonZero(Name),
     NPlusOne(Name),
@@ -247,6 +256,7 @@ impl std::fmt::Display for Field {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Field::One(t) => write!(f, "<{}>", t.0),
+            Field::Optional(t) => write!(f, "<{}>?", t.0),
             Field::Any(t) => write!(f, "<{}>*", t.0),
             Field::NonZero(t) => write!(f, "<{}>+", t.0),
             Field::NPlusOne(t) => write!(f, "<{}>n+1", t.0),
@@ -302,6 +312,10 @@ fn parse_raw_token(s: &str, field_idx: usize) -> Token {
         f if f.starts_with('<') && f.ends_with('>') => {
             Token::Field(field_idx, Field::One(f[1..f.len() - 1].to_string().into()))
         }
+        f if f.starts_with('<') && f.ends_with(">?") => Token::Field(
+            field_idx,
+            Field::Optional(f[1..f.len() - 2].to_string().into()),
+        ),
         f if f.starts_with('<') && f.ends_with(">*") => {
             Token::Field(field_idx, Field::Any(f[1..f.len() - 2].to_string().into()))
         }
@@ -584,6 +598,7 @@ impl Syntax {
                                     | Token::Keyword(_) => todo!(),
                                     Token::Field(_, f) => match f {
                                         Field::One(t)
+                                        | Field::Optional(t)
                                         | Field::Any(t)
                                         | Field::NonZero(t)
                                         | Field::NPlusOne(t) => t,
@@ -638,7 +653,9 @@ impl Rule {
                     use Token::*;
                     if !acc.ends_with('(') && !acc.is_empty() {
                         acc += match t {
-                            RParen => "",
+                            // An absent optional field prints nothing, so its
+                            // separator travels with the value.
+                            RParen | Field(_, self::Field::Optional(_)) => "",
                             _ => " ",
                         };
                     }
@@ -661,6 +678,11 @@ impl Rule {
                 .map(|(idx, f)| match f {
                     Field::One(_) => {
                         format!(", {scope}{idx}")
+                    }
+                    Field::Optional(_) => {
+                        format!(
+                            r#", {scope}{idx}.as_ref().map(|v| format!(" {{v}}")).unwrap_or_default()"#
+                        )
                     }
                     Field::Any(_) | Field::NonZero(_) | Field::NPlusOne(_) => {
                         format!(
@@ -753,6 +775,7 @@ fn rust_parse_token(spec: &Spec, t: &Token) -> String {
             Field::One(t) => {
                 format!("let m{idx} = {}::parse(p)?;", t.as_smtlibparse(spec))
             }
+            Field::Optional(t) => format!("let m{idx} = p.optional::<{}>()?;", t.with_lt(spec)),
             Field::Any(t) => format!("let m{idx} = p.any::<{}>()?;", t.with_lt(spec)),
             Field::NonZero(t) => {
                 format!("let m{idx} = p.non_zero::<{}>()?;", t.with_lt(spec))
@@ -779,7 +802,7 @@ fn rust_check_token(spec: &Spec, idx: usize, t: &Token) -> String {
             Field::One(t) | Field::NonZero(t) | Field::NPlusOne(t) => {
                 format!("{}::is_start_of(offset + {idx}, p)", t.variant(spec))
             }
-            Field::Any(_) => "todo!(\"{offset:?}, {p:?}\")".to_string(),
+            Field::Optional(_) | Field::Any(_) => "todo!(\"{offset:?}, {p:?}\")".to_string(),
         },
     }
 }
@@ -788,6 +811,8 @@ impl Grammar {
     fn tuple_fields<'a>(&'a self, spec: &'a Spec) -> impl Iterator<Item = String> + 'a {
         self.fields.iter().map(|f| match &f {
             Field::One(t) => t.output(spec),
+            // Qualified, since the generated module defines its own `Option`.
+            Field::Optional(t) => format!("std::option::Option<{}>", t.output(spec)),
             Field::Any(t) | Field::NonZero(t) | Field::NPlusOne(t) => {
                 format!("&'st [{}]", t.output(spec))
             }

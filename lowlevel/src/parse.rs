@@ -330,6 +330,15 @@ impl<'st, 'src> Parser<'st, 'src> {
     pub(crate) fn expect_st(&mut self, t: Token) -> Result<&'st str, ParseError> {
         Ok(self.storage.alloc_str(self.expect(t)?))
     }
+    pub(crate) fn optional<T: SmtlibParse<'st>>(
+        &mut self,
+    ) -> Result<std::option::Option<T::Output>, ParseError> {
+        if T::is_start_of(0, self) {
+            Ok(Some(T::parse(self)?))
+        } else {
+            Ok(None)
+        }
+    }
     pub(crate) fn any<T: SmtlibParse<'st>>(&mut self) -> Result<&'st [T::Output], ParseError> {
         let mut res = vec![];
         while T::is_start_of(0, self) {

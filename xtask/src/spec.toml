@@ -48,8 +48,9 @@ with_value = { syntax = "<keyword> <attribute_value>" }
 [sort.sort]
 syntax = "<identifier>"
 priority = 1
+# `<sort>*`, not `<sort>+`: F* writes a nullary sort as `(S)`, which z3 reads as `S`.
 [sort.parametric]
-syntax = "( <identifier> <sort>+ )"
+syntax = "( <identifier> <sort>* )"
 
 # Terms
 
@@ -70,7 +71,9 @@ syntax = "( <pattern> <term> )"
 
 [term]
 spec_constant = { syntax = "<spec_constant>" }
-identifier = { syntax = "<qual_identifier>" }
+# Ahead of `application`, whose start check sees only the `(`: `(as x S)` is an
+# identifier, and this case's own check is what tells the two apart.
+identifier = { syntax = "<qual_identifier>", priority = 1 }
 application = { syntax = "( <qual_identifier> <term>+ )" }
 let = { syntax = "( let ( <var_binding>+ ) <term> )" }
 forall = { syntax = "( forall ( <sorted_var>+ ) <term> )" }
@@ -177,11 +180,22 @@ syntax = "( declare-datatype <symbol> <datatype_dec> )"
 [command.declare-datatypes]
 syntax = "( declare-datatypes ( <sort_dec>n+1 ) ( <datatype_dec>n+1 ) )"
 
+# SMT-LIB 2.0's spelling, which F* still writes and z3 still reads. Ahead of
+# the 2.6 form, whose start check stops at `( declare-datatypes`; this one's
+# runs on to the empty parameter list, which a 2.6 command never has.
+[command.declare-datatypes-legacy]
+syntax = "( declare-datatypes ( ) ( <legacy_datatype_dec>+ ) )"
+priority = 1
+
+[legacy_datatype_dec]
+syntax = "( <symbol> <constructor_dec>* )"
+
 [command.declare-fun]
 syntax = "( declare-fun <symbol> ( <sort>* ) <sort> )"
 
+# The arity is optional: SMT-LIB 2.0 wrote `(declare-sort S)`, F* still does, and z3 reads it as 0.
 [command.declare-sort]
-syntax = "( declare-sort <symbol> <numeral> )"
+syntax = "( declare-sort <symbol> <numeral>? )"
 
 [command.define-fun]
 syntax = "( define-fun <function_def> )"

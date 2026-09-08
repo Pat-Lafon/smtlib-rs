@@ -425,7 +425,7 @@ where
                 if sorts::is_built_in_sort(sym.0) {
                     return Ok(());
                 }
-                ast::Command::DeclareSort(*sym, Numeral::from_usize(0))
+                ast::Command::DeclareSort(*sym, Some(Numeral::from_usize(0)))
             }
             ast::Sort::Parametric(ident, params) => {
                 let sym = match ident {
@@ -439,7 +439,7 @@ where
                 if sorts::is_built_in_sort(sym.0) {
                     return Ok(());
                 }
-                ast::Command::DeclareSort(*sym, Numeral::from_usize(params.len()))
+                ast::Command::DeclareSort(*sym, Some(Numeral::from_usize(params.len())))
             }
         };
         match self.driver.exec(cmd)? {

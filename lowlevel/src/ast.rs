@@ -166,10 +166,12 @@ pub enum Command<'st> {
     DeclareDatatype(Symbol<'st>, DatatypeDec<'st>),
     /// `(declare-datatypes (<sort_dec>n+1) (<datatype_dec>n+1))`
     DeclareDatatypes(&'st [SortDec<'st>], &'st [DatatypeDec<'st>]),
+    /// `(declare-datatypes () (<legacy_datatype_dec>+))`
+    DeclareDatatypesLegacy(&'st [LegacyDatatypeDec<'st>]),
     /// `(declare-fun <symbol> (<sort>*) <sort>)`
     DeclareFun(Symbol<'st>, &'st [Sort<'st>], Sort<'st>),
-    /// `(declare-sort <symbol> <numeral>)`
-    DeclareSort(Symbol<'st>, Numeral<'st>),
+    /// `(declare-sort <symbol> <numeral>?)`
+    DeclareSort(Symbol<'st>, std::option::Option<Numeral<'st>>),
     /// `(define-fun <function_def>)`
     DefineFun(FunctionDef<'st>),
     /// `(define-fun-rec <function_def>)`
@@ -244,10 +246,18 @@ impl std::fmt::Display for Command<'_> {
                     .format(" ")
                 )
             }
+            Self::DeclareDatatypesLegacy(m0) => {
+                write!(f, "(declare-datatypes () ({}))", m0.iter().format(" "))
+            }
             Self::DeclareFun(m0, m1, m2) => {
                 write!(f, "(declare-fun {} ({}) {})", m0, m1.iter().format(" "), m2)
             }
-            Self::DeclareSort(m0, m1) => write!(f, "(declare-sort {} {})", m0, m1),
+            Self::DeclareSort(m0, m1) => {
+                write!(
+                    f, "(declare-sort {}{})", m0, m1.as_ref().map(| v | format!(" {v}"))
+                    .unwrap_or_default()
+                )
+            }
             Self::DefineFun(m0) => write!(f, "(define-fun {})", m0),
             Self::DefineFunRec(m0) => write!(f, "(define-fun-rec {})", m0),
             Self::DefineFunsRec(m0, m1) => {
@@ -293,8 +303,12 @@ impl<'st> SmtlibParse<'st> for Command<'st> {
     type Output = Command<'st>;
     fn is_start_of(offset: usize, p: &mut Parser<'st, '_>) -> bool {
         (p.nth(offset) == Token::LParen
-            && p.nth_matches(offset + 1, Token::Symbol, "define-funs-rec")
-            && p.nth(offset + 2) == Token::LParen)
+            && p.nth_matches(offset + 1, Token::Reserved, "declare-datatypes")
+            && p.nth(offset + 2) == Token::LParen && p.nth(offset + 3) == Token::RParen
+            && p.nth(offset + 4) == Token::LParen)
+            || (p.nth(offset) == Token::LParen
+                && p.nth_matches(offset + 1, Token::Symbol, "define-funs-rec")
+                && p.nth(offset + 2) == Token::LParen)
             || (p.nth(offset) == Token::LParen
                 && p.nth_matches(offset + 1, Token::Reserved, "declare-datatypes")
                 && p.nth(offset + 2) == Token::LParen)
@@ -379,6 +393,22 @@ impl<'st> SmtlibParse<'st> for Command<'st> {
     }
     fn parse(p: &mut Parser<'st, '_>) -> Result<Self::Output, ParseError> {
         let offset = 0;
+        if p.nth(offset) == Token::LParen
+            && p.nth_matches(offset + 1, Token::Reserved, "declare-datatypes")
+            && p.nth(offset + 2) == Token::LParen && p.nth(offset + 3) == Token::RParen
+            && p.nth(offset + 4) == Token::LParen
+        {
+            p.expect(Token::LParen)?;
+            p.expect_matches(Token::Reserved, "declare-datatypes")?;
+            p.expect(Token::LParen)?;
+            p.expect(Token::RParen)?;
+            p.expect(Token::LParen)?;
+            let m0 = p.non_zero::<LegacyDatatypeDec<'st>>()?;
+            p.expect(Token::RParen)?;
+            p.expect(Token::RParen)?;
+            #[allow(clippy::useless_conversion)]
+            return Ok(Self::DeclareDatatypesLegacy(m0.into()));
+        }
         if p.nth(offset) == Token::LParen
             && p.nth_matches(offset + 1, Token::Symbol, "define-funs-rec")
             && p.nth(offset + 2) == Token::LParen
@@ -678,7 +708,7 @@ impl<'st> SmtlibParse<'st> for Command<'st> {
             p.expect(Token::LParen)?;
             p.expect_matches(Token::Reserved, "declare-sort")?;
             let m0 = <Symbol<'st> as SmtlibParse<'st>>::parse(p)?;
-            let m1 = <Numeral<'st> as SmtlibParse<'st>>::parse(p)?;
+            let m1 = p.optional::<Numeral<'st>>()?;
             p.expect(Token::RParen)?;
             #[allow(clippy::useless_conversion)]
             return Ok(Self::DeclareSort(m0.into(), m1.into()));
@@ -747,6 +777,7 @@ impl<'st> Command<'st> {
             Self::DeclareConst(_, _) => false,
             Self::DeclareDatatype(_, _) => false,
             Self::DeclareDatatypes(_, _) => false,
+            Self::DeclareDatatypesLegacy(_) => false,
             Self::DeclareFun(_, _, _) => false,
             Self::DeclareSort(_, _) => false,
             Self::DefineFun(_) => false,
@@ -810,6 +841,7 @@ impl<'st> Command<'st> {
             Self::DeclareConst(_, _) => Ok(None),
             Self::DeclareDatatype(_, _) => Ok(None),
             Self::DeclareDatatypes(_, _) => Ok(None),
+            Self::DeclareDatatypesLegacy(_) => Ok(None),
             Self::DeclareFun(_, _, _) => Ok(None),
             Self::DeclareSort(_, _) => Ok(None),
             Self::DefineFun(_) => Ok(None),
@@ -1887,6 +1919,36 @@ impl<'st> SmtlibParse<'st> for InfoResponse<'st> {
         Err(p.stuck("InfoResponse"))
     }
 }
+/// `(<symbol> <constructor_dec>*)`
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct LegacyDatatypeDec<'st>(pub Symbol<'st>, pub &'st [ConstructorDec<'st>]);
+impl std::fmt::Display for LegacyDatatypeDec<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "({} {})", self.0, self.1.iter().format(" "))
+    }
+}
+impl<'st> LegacyDatatypeDec<'st> {
+    pub fn parse(
+        st: &'st Storage,
+        src: &str,
+    ) -> Result<LegacyDatatypeDec<'st>, ParseError> {
+        <LegacyDatatypeDec<'st> as SmtlibParse<'st>>::parse(&mut Parser::new(st, src))
+    }
+}
+impl<'st> SmtlibParse<'st> for LegacyDatatypeDec<'st> {
+    type Output = LegacyDatatypeDec<'st>;
+    fn is_start_of(offset: usize, p: &mut Parser<'st, '_>) -> bool {
+        p.nth(offset) == Token::LParen
+    }
+    fn parse(p: &mut Parser<'st, '_>) -> Result<Self::Output, ParseError> {
+        p.expect(Token::LParen)?;
+        let m0 = <Symbol<'st> as SmtlibParse<'st>>::parse(p)?;
+        let m1 = p.any::<ConstructorDec<'st>>()?;
+        p.expect(Token::RParen)?;
+        Ok(Self(m0, m1))
+    }
+}
 /// `(logic <symbol> <logic_attribute>+)`
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
@@ -2846,7 +2908,7 @@ impl<'st> SmtlibParse<'st> for SimplifyResponse<'st> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum Sort<'st> {
-    /// `(<identifier> <sort>+)`
+    /// `(<identifier> <sort>*)`
     Parametric(Identifier<'st>, &'st [Sort<'st>]),
     /// `<identifier>`
     Sort(Identifier<'st>),
@@ -2878,7 +2940,7 @@ impl<'st> SmtlibParse<'st> for Sort<'st> {
         if p.nth(offset) == Token::LParen {
             p.expect(Token::LParen)?;
             let m0 = <Identifier<'st> as SmtlibParse<'st>>::parse(p)?;
-            let m1 = p.non_zero::<Sort<'st>>()?;
+            let m1 = p.any::<Sort<'st>>()?;
             p.expect(Token::RParen)?;
             #[allow(clippy::useless_conversion)]
             return Ok(Self::Parametric(m0.into(), m1.into()));
@@ -3261,8 +3323,9 @@ impl<'st> Term<'st> {
 impl<'st> SmtlibParse<'st> for Term<'st> {
     type Output = &'st Term<'st>;
     fn is_start_of(offset: usize, p: &mut Parser<'st, '_>) -> bool {
-        (p.nth(offset) == Token::LParen
-            && p.nth_matches(offset + 1, Token::Reserved, "match"))
+        (QualIdentifier::is_start_of(offset, p))
+            || (p.nth(offset) == Token::LParen
+                && p.nth_matches(offset + 1, Token::Reserved, "match"))
             || (p.nth(offset) == Token::LParen
                 && p.nth_matches(offset + 1, Token::Reserved, "let")
                 && p.nth(offset + 2) == Token::LParen)
@@ -3275,10 +3338,14 @@ impl<'st> SmtlibParse<'st> for Term<'st> {
             || (p.nth(offset) == Token::LParen
                 && p.nth_matches(offset + 1, Token::Reserved, "!"))
             || (p.nth(offset) == Token::LParen) || (SpecConstant::is_start_of(offset, p))
-            || (QualIdentifier::is_start_of(offset, p))
     }
     fn parse(p: &mut Parser<'st, '_>) -> Result<Self::Output, ParseError> {
         let offset = 0;
+        if QualIdentifier::is_start_of(offset, p) {
+            let m0 = <QualIdentifier<'st> as SmtlibParse<'st>>::parse(p)?;
+            #[allow(clippy::useless_conversion)]
+            return Ok(p.storage.alloc(Self::Identifier(m0.into())));
+        }
         if p.nth(offset) == Token::LParen
             && p.nth_matches(offset + 1, Token::Reserved, "match")
         {
@@ -3357,11 +3424,6 @@ impl<'st> SmtlibParse<'st> for Term<'st> {
             let m0 = <SpecConstant<'st> as SmtlibParse<'st>>::parse(p)?;
             #[allow(clippy::useless_conversion)]
             return Ok(p.storage.alloc(Self::SpecConstant(m0.into())));
-        }
-        if QualIdentifier::is_start_of(offset, p) {
-            let m0 = <QualIdentifier<'st> as SmtlibParse<'st>>::parse(p)?;
-            #[allow(clippy::useless_conversion)]
-            return Ok(p.storage.alloc(Self::Identifier(m0.into())));
         }
         Err(p.stuck("Term"))
     }

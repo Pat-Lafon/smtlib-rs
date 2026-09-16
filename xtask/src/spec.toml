@@ -252,11 +252,12 @@ response = "<get_unsat_core_response>"
 syntax = "( get-value ( <term>+ ) )"
 response = "<get_value_response>"
 
+# The level count is optional: Verus writes `(pop)`, and z3 reads it as 1.
 [command.pop]
-syntax = "( pop <numeral> )"
+syntax = "( pop <numeral>? )"
 
 [command.push]
-syntax = "( push <numeral> )"
+syntax = "( push <numeral>? )"
 
 [command.reset]
 syntax = "( reset )"

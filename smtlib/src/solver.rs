@@ -348,7 +348,7 @@ where
             declared_sorts: self.declared_sorts.len(),
         });
 
-        let cmd = ast::Command::Push(Numeral::from_usize(levels));
+        let cmd = ast::Command::Push(Some(Numeral::from_usize(levels)));
         match self.driver.exec(cmd)? {
             ast::GeneralResponse::Success => {}
             ast::GeneralResponse::Error(e) => {
@@ -365,7 +365,7 @@ where
             self.declared_sorts.truncate(sizes.declared_sorts);
         }
 
-        let cmd = ast::Command::Pop(Numeral::from_usize(levels));
+        let cmd = ast::Command::Pop(Some(Numeral::from_usize(levels)));
         match self.driver.exec(cmd)? {
             ast::GeneralResponse::Success => {}
             ast::GeneralResponse::Error(e) => {

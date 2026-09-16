@@ -208,10 +208,10 @@ pub enum Command<'st> {
     Maximize(&'st Term<'st>),
     /// `(minimize <term>)`
     Minimize(&'st Term<'st>),
-    /// `(pop <numeral>)`
-    Pop(Numeral<'st>),
-    /// `(push <numeral>)`
-    Push(Numeral<'st>),
+    /// `(pop <numeral>?)`
+    Pop(std::option::Option<Numeral<'st>>),
+    /// `(push <numeral>?)`
+    Push(std::option::Option<Numeral<'st>>),
     /// `(reset)`
     Reset,
     /// `(reset-assertions)`
@@ -283,8 +283,18 @@ impl std::fmt::Display for Command<'_> {
             Self::GetValue(m0) => write!(f, "(get-value ({}))", m0.iter().format(" ")),
             Self::Maximize(m0) => write!(f, "(maximize {})", m0),
             Self::Minimize(m0) => write!(f, "(minimize {})", m0),
-            Self::Pop(m0) => write!(f, "(pop {})", m0),
-            Self::Push(m0) => write!(f, "(push {})", m0),
+            Self::Pop(m0) => {
+                write!(
+                    f, "(pop{})", m0.as_ref().map(| v | format!(" {v}"))
+                    .unwrap_or_default()
+                )
+            }
+            Self::Push(m0) => {
+                write!(
+                    f, "(push{})", m0.as_ref().map(| v | format!(" {v}"))
+                    .unwrap_or_default()
+                )
+            }
             Self::Reset => write!(f, "(reset)"),
             Self::ResetAssertions => write!(f, "(reset-assertions)"),
             Self::SetInfo(m0) => write!(f, "(set-info {})", m0),
@@ -553,7 +563,7 @@ impl<'st> SmtlibParse<'st> for Command<'st> {
         {
             p.expect(Token::LParen)?;
             p.expect_matches(Token::Reserved, "push")?;
-            let m0 = <Numeral<'st> as SmtlibParse<'st>>::parse(p)?;
+            let m0 = p.optional::<Numeral<'st>>()?;
             p.expect(Token::RParen)?;
             #[allow(clippy::useless_conversion)] return Ok(Self::Push(m0.into()));
         }
@@ -562,7 +572,7 @@ impl<'st> SmtlibParse<'st> for Command<'st> {
         {
             p.expect(Token::LParen)?;
             p.expect_matches(Token::Reserved, "pop")?;
-            let m0 = <Numeral<'st> as SmtlibParse<'st>>::parse(p)?;
+            let m0 = p.optional::<Numeral<'st>>()?;
             p.expect(Token::RParen)?;
             #[allow(clippy::useless_conversion)] return Ok(Self::Pop(m0.into()));
         }

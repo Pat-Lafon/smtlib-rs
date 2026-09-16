@@ -358,9 +358,9 @@ Ok(Script([
     ]),
   ])),
   Echo("\"BUBBLE SORT\""),
-  Push(Numeral(
+  Push(Some(Numeral(
     repr: Number(1),
-  )),
+  ))),
   Assert(Application(Identifier(Simple(Symbol("not"))), [
     Application(Identifier(Simple(Symbol("check"))), [
       Identifier(Identifier(Simple(Symbol("l4")))),
@@ -369,9 +369,9 @@ Ok(Script([
   Echo("\"Testing the validity of the algorithm; `unsat` expected: \""),
   CheckSat,
   Echo("\"---------------------\""),
-  Pop(Numeral(
+  Pop(Some(Numeral(
     repr: Number(1),
-  )),
+  ))),
   Assert(Application(Identifier(Simple(Symbol("check"))), [
     Identifier(Identifier(Simple(Symbol("l4")))),
   ])),
